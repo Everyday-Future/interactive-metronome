@@ -1,0 +1,68 @@
+*.py[cod]
+venv/
+*.egg-info/
+dist/
+settings.cfg
+*.log*
+*__pycache__
+*.~lock*
+*.env
+*.env.secrets
+*.Trash-1000*
+*/.ipynb_checkpoints/*
+chromedriver.exe
+geckodriver.exe
+geckodriver.log
+msedgedriver.exe
+
+# exclude everything in temp except the folder itself.
+tools/lilypond/*
+data/*.json
+data/temp/
+data/test_gallery/*.*
+data/test_gallery/*/*.*
+!data/test_gallery/.gitkeep
+!data/test_assets
+data/*.pdf
+
+docs/build
+.DS_Store
+*$py.class
+
+*.log
+*.db
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.coverage.*
+.cache
+coverage.xml
+*,cover
+.hypothesis/
+.pytest_cache/
+
+# Translations
+*.pot
+
+
+# Sphinx documentation
+docs/_build/
+
+# IntelliJ Idea family of suites
+.idea
+.idea/workspace.xml
+.idea/*
+*.iml
+## File-based project format:
+*.ipr
+*.iws
+## mpeltonen/sbt-idea plugin
+.idea_modules/
+
+# PyBuilder
+target/
+
+
+# misc
+*.pem
