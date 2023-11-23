@@ -39,16 +39,18 @@ class Attempt(MovingObject):
 
 class BeatLine:
     def __init__(self, window, creation_time, beats_on_screen, click_sound_tick, click_sound_tock=None,
-                 on_the_one=False):
+                 beat_idx=1):
         self.window = window
         self.screen_width, self.screen_height = self.window.get_size()
         self.creation_time = creation_time
         self.beats_on_screen = beats_on_screen
         self.x = self.screen_width  # Starting position at the right edge
         self.hit = False
-        self.on_the_one = on_the_one
+        self.on_the_one = beat_idx == 0
+        self.beat_idx = beat_idx
         self.click_sound_tick = click_sound_tick
         self.click_sound_tock = click_sound_tock or click_sound_tick
+        self.font = pygame.font.Font(None, 36)
 
     def update(self):
         elapsed_time = time.time() - self.creation_time
@@ -57,9 +59,12 @@ class BeatLine:
 
     def draw(self, targeted_beat, beats_per_bar):
         if self.on_the_one is True:
-            pygame.draw.line(self.window, white, (self.x, 200), (self.x, self.screen_height), 3)
+            pygame.draw.line(self.window, white, (self.x, 200), (self.x, self.screen_height), 5)
         else:
             pygame.draw.line(self.window, white, (self.x, 200), (self.x, self.screen_height), 1)
+        bpm_text = self.font.render(f"{self.beat_idx + 1}", True, white)
+        text_rect = bpm_text.get_rect(center=(self.x, 180))
+        self.window.blit(bpm_text, text_rect)
         if abs(self.x - (self.screen_width / 2)) < 2.0 and self.hit is False:
             self.click_sound_tick.play()
             self.hit = True
@@ -86,6 +91,7 @@ class GameUI:
         self.channels = 4
         self.keys = [pygame.K_a, pygame.K_s, pygame.K_d, pygame.K_f]
         self.exercise = ExerciseFactory().by_name(exercise_name=exercise_name)
+        self.current_pattern = self.exercise.patterns[0].__getitem__(0)
         # Game state
         self.lines = []
         self.targets = []
@@ -103,7 +109,6 @@ class GameUI:
         self.hit_collector = hit_collector
         if self.hit_collector.running is False:
             self.hit_collector.connect()
-        self.hits = []
         self.hit_accuracy = 10
         self.hit_threshold = 30.0  # out of 100
 
@@ -147,7 +152,8 @@ class GameUI:
         new_hit = self.hit_collector.get_hit()
         if new_hit is not None:
             assert isinstance(new_hit, Hit)
-            print(f'new hit! channel={new_hit.channel} amplitude={new_hit.amplitude} lag={time.time() - new_hit.time}')
+            # print(f'new hit! channel={new_hit.channel} amplitude={new_hit.amplitude}'
+            #       f'lag={round(time.time() - new_hit.time, 2)}')
             if new_hit.amplitude > self.hit_threshold:
                 new_attempt = Attempt(window=self.window,
                                       creation_time=new_hit.time,
@@ -168,7 +174,6 @@ class GameUI:
                 if not hit:
                     self.combo = 0
                     self.misses += 1
-                print('added!')
                 self.attempts.append(new_attempt)
 
     def pattern_to_targets(self, new_pattern: Pattern, current_time: float):
@@ -176,7 +181,6 @@ class GameUI:
         Turn a pattern into a list of targets
         """
         targets = []
-        print('new_pattern', new_pattern)
         for idx, key in enumerate(['rh', 'lh', 'rf', 'lf']):
             for note_value in new_pattern[key]:
                 targets.append(Target(window=self.window,
@@ -201,7 +205,6 @@ class GameUI:
         missed_targets = [target for target in self.targets if target.x < 0 and target.hit is False]
         self.misses += len(missed_targets)
         self.targets = [target for target in self.targets if target.x >= 0]
-
         for attempt in self.attempts:
             attempt.update()
             attempt.draw()
@@ -212,10 +215,10 @@ class GameUI:
                                        creation_time=current_time,
                                        beats_on_screen=self.beats_on_screen,
                                        click_sound_tick=self.click_sound,
-                                       on_the_one=self.next_beat == 0))
+                                       beat_idx=self.next_beat))
             if self.next_beat == 0:
-                pattern = self.exercise.__next__()
-                self.targets.extend(self.pattern_to_targets(new_pattern=pattern, current_time=current_time))
+                self.current_pattern = self.exercise.__next__()
+                self.targets.extend(self.pattern_to_targets(new_pattern=self.current_pattern, current_time=current_time))
             self.next_beat += 1
             self.next_beat %= self.beats_per_bar
             self.next_beat_time += self.beat_interval
@@ -246,7 +249,7 @@ class GameUI:
         text_rect.top = 70
         self.window.blit(current_beat_text, text_rect)
         # Exercise name
-        bpm_text = self.font.render(f"Exercise: {self.beats_per_bar}", True, white)
+        bpm_text = self.font.render(f"Exercise: {self.current_pattern['name']}", True, white)
         text_rect = bpm_text.get_rect(center=(self.width / 2, 130))
         self.window.blit(bpm_text, text_rect)
         # Update the Display

@@ -74,7 +74,7 @@ class Pattern:
 
     def __getitem__(self, idx):
         bar_idx = idx % self.num_bars
-        return {'rh': self.right_hand[bar_idx], 'lh': self.left_hand[bar_idx],
+        return {'name': self.name, 'rh': self.right_hand[bar_idx], 'lh': self.left_hand[bar_idx],
                 'rf': self.right_foot[bar_idx], 'lf': self.left_foot[bar_idx]}
 
     def __iter__(self):
