@@ -27,3 +27,4 @@ class Config(object):
     IS_VERBOSE = parse_env_boolean(os.environ.get("IS_VERBOSE", True))
     COM_PORT = os.environ.get("COM_PORT", 'COM3')
     BAURDRATE = os.environ.get("BAURDRATE", 115200)
+    EXERCISE_CSV_FPATH = os.environ.get('EXERCISE_CSV_FPATH', './data/exercises.tsv')

@@ -1,11 +1,10 @@
 import sys
 import time
-import random
 import pygame
 from config import Config
 from metronome.ui.colors import *
 from metronome.ui.main_menu import MenuUI
-from metronome.exercise.exercise import Exercise, BarPattern
+from metronome.exercise.exercise import ExerciseFactory, Pattern
 from metronome.arduino.arduino_threaded import Hit, ArduinoController
 
 
@@ -27,14 +26,15 @@ class MovingObject:
 
 class Target(MovingObject):
     def draw(self):
-        color = light_blue if self.hit else blue
+        color = blue if self.hit else light_blue
         pygame.draw.circle(self.window, color, (int(self.x), int(self.channel * 70 + 300)), 12)
 
 
 class Attempt(MovingObject):
     def draw(self):
         color = green if self.hit else white
-        pygame.draw.circle(self.window, color, (int(self.x - self.screen_width / 2), int(self.channel * 70 + 300)), 6)
+        pygame.draw.circle(self.window, color, (int(self.x - self.screen_width / 2),
+                                                int(self.channel * 70 + 300)), 6)
 
 
 class BeatLine:
@@ -69,11 +69,11 @@ class BeatLine:
 
 
 class GameUI:
-    def __init__(self, window, hit_collector: ArduinoController, bpm: int = 60,
+    def __init__(self, window, hit_collector: ArduinoController, exercise_name: str, bpm: int = 60,
                  beats_per_bar: int = 4, beats_on_screen: int = 6):
         self.window = window
         self.width, self.height = self.window.get_size()
-        pygame.display.set_caption('Rhythm Game with Metronome')
+        pygame.display.set_caption(f'Monotonous Industrial Blender - Extreme {exercise_name.title()} Edition')
         # Game settings
         self.bpm = bpm
         self.beat_interval = 60.0 / self.bpm
@@ -85,6 +85,7 @@ class GameUI:
         self.targeted_beat = -1
         self.channels = 4
         self.keys = [pygame.K_a, pygame.K_s, pygame.K_d, pygame.K_f]
+        self.exercise = ExerciseFactory().by_name(exercise_name=exercise_name)
         # Game state
         self.lines = []
         self.targets = []
@@ -104,9 +105,7 @@ class GameUI:
             self.hit_collector.connect()
         self.hits = []
         self.hit_accuracy = 10
-
-    def show_main_menu(self):
-        pass
+        self.hit_threshold = 30.0  # out of 100
 
     def handle_events(self, current_time):
         for event in pygame.event.get():
@@ -143,7 +142,51 @@ class GameUI:
         if not hit_attempt:
             self.combo = 0
 
+    def check_inputs(self):
+        # Get new hits from the arduino
+        new_hit = self.hit_collector.get_hit()
+        if new_hit is not None:
+            assert isinstance(new_hit, Hit)
+            print(f'new hit! channel={new_hit.channel} amplitude={new_hit.amplitude} lag={time.time() - new_hit.time}')
+            if new_hit.amplitude > self.hit_threshold:
+                new_attempt = Attempt(window=self.window,
+                                      creation_time=new_hit.time,
+                                      beats_on_screen=self.beats_on_screen,
+                                      channel=new_hit.channel)
+                hit = False
+                for target in self.targets:
+                    close_enough = abs(target.x - self.center_line_position) < self.hit_accuracy
+                    if target.channel == new_hit.channel and close_enough:
+                        if target.hit is False:
+                            self.score += 1
+                            self.combo += 1
+                            self.max_combo = max(self.max_combo, self.combo)
+                        target.hit = True
+                        new_attempt.hit = True
+                        hit = True
+                        break
+                if not hit:
+                    self.combo = 0
+                    self.misses += 1
+                print('added!')
+                self.attempts.append(new_attempt)
+
+    def pattern_to_targets(self, new_pattern: Pattern, current_time: float):
+        """
+        Turn a pattern into a list of targets
+        """
+        targets = []
+        print('new_pattern', new_pattern)
+        for idx, key in enumerate(['rh', 'lh', 'rf', 'lf']):
+            for note_value in new_pattern[key]:
+                targets.append(Target(window=self.window,
+                                      creation_time=current_time + note_value,
+                                      beats_on_screen=self.beats_on_screen,
+                                      channel=idx))
+        return targets
+
     def update_and_draw(self, current_time):
+        self.check_inputs()
         self.window.fill(black)
         # Draw Central Line (Marker for Beat Alignment)
         pygame.draw.line(self.window, white,
@@ -158,6 +201,7 @@ class GameUI:
         missed_targets = [target for target in self.targets if target.x < 0 and target.hit is False]
         self.misses += len(missed_targets)
         self.targets = [target for target in self.targets if target.x >= 0]
+
         for attempt in self.attempts:
             attempt.update()
             attempt.draw()
@@ -169,22 +213,9 @@ class GameUI:
                                        beats_on_screen=self.beats_on_screen,
                                        click_sound_tick=self.click_sound,
                                        on_the_one=self.next_beat == 0))
-            self.targets.append(Target(window=self.window,
-                                       creation_time=current_time,
-                                       beats_on_screen=self.beats_on_screen,
-                                       channel=0))
-            self.targets.append(Target(window=self.window,
-                                       creation_time=current_time,
-                                       beats_on_screen=self.beats_on_screen,
-                                       channel=1))
-            self.targets.append(Target(window=self.window,
-                                       creation_time=current_time,
-                                       beats_on_screen=self.beats_on_screen,
-                                       channel=2))
-            self.targets.append(Target(window=self.window,
-                                       creation_time=current_time,
-                                       beats_on_screen=self.beats_on_screen,
-                                       channel=3))
+            if self.next_beat == 0:
+                pattern = self.exercise.__next__()
+                self.targets.extend(self.pattern_to_targets(new_pattern=pattern, current_time=current_time))
             self.next_beat += 1
             self.next_beat %= self.beats_per_bar
             self.next_beat_time += self.beat_interval
@@ -227,9 +258,9 @@ def run():
     pygame.init()
     pygame.mixer.init()
     window = pygame.display.set_mode((width, height))
-    pygame.display.set_caption('Exercise Menu')
+    pygame.display.set_caption('Monotonous Industrial Blender - Main Menu')
     hit_collector = ArduinoController(port=Config.COM_PORT, baudrate=Config.BAURDRATE, name='hits')
-    menu = MenuUI(screen=window)
+    menu = MenuUI(screen=window, exercise_names=ExerciseFactory().list_names())
     game = None
     try:
         # Main loop
@@ -252,11 +283,13 @@ def run():
                 if game is None:
                     game = GameUI(window=window,
                                   hit_collector=hit_collector,
+                                  exercise_name=menu.exercise_list[menu.selected_exercise],
                                   bpm=menu.bpm,
                                   beats_per_bar=menu.beats_per_bar,
                                   beats_on_screen=8)
                     if hit_collector.running is False:
-                        raise ValueError(f"could not connect to Arduino on port={Config.COM_PORT} at baudrate={Config.BAURDRATE}")
+                        raise ValueError(
+                            f"could not connect to Arduino on port={Config.COM_PORT} at baudrate={Config.BAURDRATE}")
                 game.update_and_draw(current_time=current_time)
     except:
         del game

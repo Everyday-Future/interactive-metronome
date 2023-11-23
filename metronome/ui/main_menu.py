@@ -32,13 +32,13 @@ class Button:
 
 
 class MenuUI:
-    def __init__(self, screen):
+    def __init__(self, screen, exercise_names):
         self.screen = screen
         self.width, self.height = self.screen.get_size()
         self.bpm = 60  # Starting BPM
         self.beats_per_bar = 4  # Default Beats Per Bar
         self.selected_exercise = 0  # Default selected exercise
-        self.exercise_list = ["Happy Feet", "Hand Independence", "Whole Body Scrub"]
+        self.exercise_list = exercise_names
         self.create_buttons()
 
     def create_buttons(self):
@@ -105,7 +105,7 @@ def run():
     screen = pygame.display.set_mode((600, 800))
     pygame.display.set_caption('Exercise Menu')
     # Create Menu UI
-    menu_ui = MenuUI(screen)
+    menu_ui = MenuUI(screen, exercise_names=["Happy Feet", "Hand Independence", "Whole Body Scrub"])
     # Main loop
     running = True
     menu_mode = True

@@ -1,4 +1,4 @@
-from metronome.ui.metronome_ui import run
+from metronome.ui.scrolling import run
 
 
 if __name__ == '__main__':
