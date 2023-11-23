@@ -1,22 +1,14 @@
-
 import sys
 import time
 import random
 import pygame
 from config import Config
+from metronome.ui.colors import *
+from metronome.ui.main_menu import MenuUI
 from metronome.exercise.exercise import Exercise, BarPattern
 from metronome.arduino.arduino_threaded import Hit, ArduinoController
 
 
-black = (0, 0, 0)
-white = (255, 255, 255)
-green = (40, 255, 40)
-blue = (40, 40, 255)
-light_blue = (140, 140, 255)
-red = (255, 40, 40)
-
-
-# Line and Target Classes
 class MovingObject:
     def __init__(self, window, creation_time, beats_on_screen, channel=-1):
         self.window = window
@@ -76,18 +68,15 @@ class BeatLine:
         return targeted_beat
 
 
-# GameUI Class
 class GameUI:
-    def __init__(self, hit_collector: ArduinoController, bpm: int = 60,
+    def __init__(self, window, hit_collector: ArduinoController, bpm: int = 60,
                  beats_per_bar: int = 4, beats_on_screen: int = 6):
-        pygame.init()
-        pygame.mixer.init()
-        self.width, self.height = 1080, 800
-        self.window = pygame.display.set_mode((self.width, self.height))
+        self.window = window
+        self.width, self.height = self.window.get_size()
         pygame.display.set_caption('Rhythm Game with Metronome')
         # Game settings
-        self.BPM = bpm
-        self.beat_interval = 60.0 / self.BPM
+        self.bpm = bpm
+        self.beat_interval = 60.0 / self.bpm
         self.next_beat_time = time.time() + self.beat_interval
         self.center_line_position = self.width // 2
         self.beats_per_bar = beats_per_bar
@@ -115,6 +104,9 @@ class GameUI:
             self.hit_collector.connect()
         self.hits = []
         self.hit_accuracy = 10
+
+    def show_main_menu(self):
+        pass
 
     def handle_events(self, current_time):
         for event in pygame.event.get():
@@ -163,6 +155,8 @@ class GameUI:
         for target in self.targets:
             target.update()
             target.draw()
+        missed_targets = [target for target in self.targets if target.x < 0 and target.hit is False]
+        self.misses += len(missed_targets)
         self.targets = [target for target in self.targets if target.x >= 0]
         for attempt in self.attempts:
             attempt.update()
@@ -199,10 +193,11 @@ class GameUI:
         self.window.blit(score_text, (10, 10))
         misses_text = self.font.render(f"Misses: {self.misses}", True, white)
         self.window.blit(misses_text, (10, 40))
-        combo_text = self.font.render(f"Combo: {self.combo} (Max: {self.max_combo})", True, white)
+        combo_color = red if self.combo == self.max_combo and self.combo > 0 else white
+        combo_text = self.font.render(f"Combo: {self.combo} (Max: {self.max_combo})", True, combo_color)
         self.window.blit(combo_text, (10, 70))
         # Display the current BPM
-        bpm_text = self.font.render(f"BPM: {self.BPM}", True, white)
+        bpm_text = self.font.render(f"BPM: {self.bpm}", True, white)
         text_rect = bpm_text.get_rect()
         text_rect.right = self.width - 30  # align to right to 150px
         text_rect.top = 10
@@ -228,33 +223,47 @@ class GameUI:
 
 
 def run():
+    width, height = 1080, 600
+    pygame.init()
+    pygame.mixer.init()
+    window = pygame.display.set_mode((width, height))
+    pygame.display.set_caption('Exercise Menu')
     hit_collector = ArduinoController(port=Config.COM_PORT, baudrate=Config.BAURDRATE, name='hits')
-    hit_collector.connect()
-    if hit_collector.running is False:
-        raise ValueError(f"could not connect to Arduino on port={Config.COM_PORT} at baudrate={Config.BAURDRATE}")
-    ui = GameUI(hit_collector=hit_collector,
-                bpm=random.randint(40, 90),
-                beats_per_bar=random.choice([3, 4, 4, 4, 4, 5]),
-                beats_on_screen=8)
+    menu = MenuUI(screen=window)
+    game = None
     try:
         # Main loop
+        menu_mode = True
         running = True
         while running:
             current_time = time.time()
-
             # Handle Events
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
-                elif event.type == pygame.KEYDOWN:
-                    ui.handle_keydown(event=event, current_time=current_time)
-            ui.update_and_draw(current_time=current_time)
+                if menu_mode:
+                    pos = pygame.mouse.get_pos()
+                    menu_mode = menu.handle_event(event, pos)
+                elif not menu_mode and event.type == pygame.KEYDOWN:
+                    game.handle_keydown(event=event, current_time=current_time)
+            if menu_mode is True:
+                menu.draw()
+            else:
+                if game is None:
+                    game = GameUI(window=window,
+                                  hit_collector=hit_collector,
+                                  bpm=menu.bpm,
+                                  beats_per_bar=menu.beats_per_bar,
+                                  beats_on_screen=8)
+                    if hit_collector.running is False:
+                        raise ValueError(f"could not connect to Arduino on port={Config.COM_PORT} at baudrate={Config.BAURDRATE}")
+                game.update_and_draw(current_time=current_time)
     except:
-        del ui
+        del game
         hit_collector.disconnect()
         pygame.quit()
         raise
-    del ui
+    del game
     hit_collector.disconnect()
     pygame.quit()
     sys.exit()
