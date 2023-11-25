@@ -35,29 +35,29 @@ class MenuUI:
     def __init__(self, screen, exercise_names):
         self.screen = screen
         self.width, self.height = self.screen.get_size()
-        self.bpm = 60  # Starting BPM
+        self.bpm = 80  # Starting BPM
         self.beats_per_bar = 4  # Default Beats Per Bar
         self.selected_exercise = 0  # Default selected exercise
         self.exercise_list = exercise_names
         self.create_buttons()
 
     def create_buttons(self):
-        self.start_button = Button((100, 255, 100), self.width // 2 - 50, self.height // 2 - 150, 100, 50, 'Start')
+        self.start_button = Button((100, 255, 100), self.width // 2 - 50, self.height // 2 - 200, 100, 40, 'Start')
         self.bpm_down_button = Button(WHITE, 0, 10, 50, 25, '-')
         self.bpm_up_button = Button(WHITE, 200, 10, 50, 25, '+')
         self.beats_down_button = Button(WHITE, 0, 50, 50, 25, '-')
         self.beats_up_button = Button(WHITE, 200, 50, 50, 25, '+')
-        self.exercise_buttons = [Button(LIGHT_BLUE, self.width // 2 - 90, self.height // 2 - 90 + i * 30, 180, 25, exercise)
+        self.exercise_buttons = [Button(MENU_COLOR, self.width // 2 - 150, self.height // 2 - 90 + i * 30, 300, 30, exercise)
                                  for i, exercise in enumerate(self.exercise_list)]
 
     def draw(self):
         # Draw background
         self.screen.fill(WHITE)
         # Draw menu square
-        menu_width, menu_height = 300, 300
+        menu_width, menu_height = 350, 400
         # Draw menu square
         menu_rect = pygame.Rect(self.width // 2 - menu_width/2, self.height // 2 - menu_height / 2, menu_width, menu_height)
-        pygame.draw.rect(self.screen, LIGHT_BLUE, menu_rect)
+        pygame.draw.rect(self.screen, MENU_COLOR, menu_rect)
 
         # Draw buttons
         self.start_button.draw(self.screen)
@@ -68,7 +68,7 @@ class MenuUI:
 
         # Draw exercise buttons
         for i, button in enumerate(self.exercise_buttons):
-            button.color = HIGHLIGHT_COLOR if i == self.selected_exercise else LIGHT_BLUE
+            button.color = HIGHLIGHT_COLOR if i == self.selected_exercise else MENU_COLOR
             button.draw(self.screen)
 
         # BPM and Beats Per Bar display
