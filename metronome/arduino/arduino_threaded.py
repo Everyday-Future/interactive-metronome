@@ -55,7 +55,6 @@ class ArduinoController:
             raise ValueError(f"Hit messages start with 'h'. This message is {msg}")
         msg = msg[1:]
         hit_channel, hit_amplitude = msg.split('a')
-        print(f"new hit detected with channel={hit_channel} and amplitude={hit_amplitude}")
         return Hit(hit_channel=int(hit_channel), hit_amplitude=float(hit_amplitude), hit_time=hit_time)
 
     def get_hit(self):

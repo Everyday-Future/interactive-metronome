@@ -1,112 +1,101 @@
 
-import math
-from typing import List
-from enum import Enum
+from config import Config
 
 
-class Note(Enum):
-    WHOLE = 1
-    TWO = 2
-    THREE = 3
-    FOUR = 4
-    HALF = 0.5
-    QUARTER = 0.25
-    QUARTER_TRIPLET = 1.0 / 3.0
-    SIXTEENTH = 0.125
-    SIXTEENTH_TRIPLET = 1.0 / 6.0
-    THIRTY_SECOND = 0.125
-    EMPTY = 0.0
-
-
-class BarPattern:
+class Pattern:
     """
-    Pattern of notes in a bar
-
-    Should be a list of indexes for beats like [0.5, 1.0, 1.3333, 1.66666, 2.0] etc...
-    Where the whole number is the beat location and the decimal is the distribution within the beat.
+    Pattern of beats for each voice
     """
-
-    def __init__(self, pattern: list, num_loops: int = 1):
-        self.pattern = pattern
+    def __init__(self, name, left_foot: list = None, right_foot: list = None,
+                 left_hand: list = None, right_hand: list = None, num_loops: int = 1):
+        self.name = name
+        # List of lists of bars to be repeated in a loop
+        # Like [[0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.5], ... ] for 8th note beats
+        self.left_foot = left_foot
+        self.right_foot = right_foot
+        self.left_hand = left_hand
+        self.right_hand = right_hand
         self.num_loops = num_loops
+        self.num_bars = max(len(self.left_foot or []), len(self.right_foot or []),
+                            len(self.left_hand or []), len(self.right_hand or []))
+        self.current_idx = 0
+        self.max_len = self.num_bars * self.num_loops
+        # Fill in blank bars
+        if self.left_foot is None:
+            self.left_foot = [[] for _ in range(self.num_bars)]
+        if self.right_foot is None:
+            self.right_foot = [[] for _ in range(self.num_bars)]
+        if self.left_hand is None:
+            self.left_hand = [[] for _ in range(self.num_bars)]
+        if self.right_hand is None:
+            self.right_hand = [[] for _ in range(self.num_bars)]
+        # Ensure that all the bars line up
+        assert all([len(self.left_foot) == len(limb) for limb in (self.right_foot, self.left_hand, self.right_hand)])
+
+    @staticmethod
+    def beat_str_to_coordinates(beat_str):
+        """
+        Parse a beat string like "x---,x---,x---,x---" into timing coordinates for the game.
+        """
+        if beat_str is None:
+            return []
+        beats = [beat.strip() for beat in beat_str.split(',') if beat.strip() != '']
+        if len(beats) == 0:
+            return []
+        out_bars = []
+        for idx, beat in enumerate(beats):
+            out_bar = []
+            if len(beat) > 0:
+                increment = 1.0 / len(beat)
+                for note_idx, note in enumerate(beat):
+                    if note == 'x':
+                        out_bar.append(round(idx + increment * note_idx, 2))
+            out_bars.extend(out_bar)
+        return out_bars
 
     @classmethod
-    def from_recipe(cls, increment: Note, offset: float, num_beats: int, num_loops: int = 1):
+    def from_tsv(cls, name, left_foot: list = None, right_foot: list = None,
+                 left_hand: list = None, right_hand: list = None, num_loops: int = 1):
         """
-        Build a bar of beats from an increment, offset, and bar length
+        Parse a pattern from a TSV list of pattern strings like
+        ["x---,x---,x---,x---", "x-x,-x-,x-x,-x-", "x---,x---,x---,x---"]
         """
-        offset_value = increment.value * offset
-        if increment == Note.EMPTY:
-            return cls(pattern=[], num_loops=num_loops)
-        note_count = math.ceil((num_beats - offset_value) / increment.value)
-        if note_count <= 0:
-            raise ValueError(f"invalid recipe: increment={increment}  offset={offset}  num_beats={num_beats}")
-        pattern = [round(increment.value * idx + offset_value, 3) for idx in range(note_count)]
-        return cls(pattern=pattern, num_loops=num_loops)
+        if left_foot is not None:
+            left_foot = [cls.beat_str_to_coordinates(lf) for lf in left_foot]
+        if right_foot is not None:
+            right_foot = [cls.beat_str_to_coordinates(rf) for rf in right_foot]
+        if left_hand is not None:
+            left_hand = [cls.beat_str_to_coordinates(lh) for lh in left_hand]
+        if right_hand is not None:
+            right_hand = [cls.beat_str_to_coordinates(rh) for rh in right_hand]
+        return cls(name=name,
+                   left_foot=left_foot, right_foot=right_foot, left_hand=left_hand, right_hand=right_hand,
+                   num_loops=num_loops)
 
-    @classmethod
-    def from_notes(cls, notes: list[Note], num_beats: int, num_loops: int = 1):
-        """
-        Build a bar from a list of Note values. For example:
-        [Q Q Q Q QR QR QR Q Q Q Q QS QS QS QS Q Q]
-        """
-        pattern_sum = 0.0
-        pattern = []
-        for each_note in notes:
-            pattern.append(pattern_sum)
-            pattern_sum += each_note.value
-            if pattern_sum >= num_beats:
-                return cls(pattern=pattern, num_loops=num_loops)
-        return cls(pattern=pattern, num_loops=num_loops)
-
-
-class Phrase:
-    """
-    list of BarPattern to be iterated over. Next bar can be pulled with .next()
-    """
-
-    def __init__(self, bars: List[BarPattern]):
-        self.bars = bars
-        self.bar_idx = 0
-        self.current_loop = 0
-
-    @property
-    def bar_count(self):
-        return sum([bar.num_loops for bar in self.bars])
-
-    def query(self, target_idx):
-        target_idx %= self.bar_count - 1
-        current_count = 0
-        for bar in self.bars:
-            if (target_idx - current_count) < bar.num_loops:
-                return bar
-            else:
-                current_count += 1
-        # reset the loop if none found
-        self.bar_idx = 1
-        return self.bars[0]
+    def __getitem__(self, idx):
+        bar_idx = idx % self.num_bars
+        return {'name': self.name, 'rh': self.right_hand[bar_idx], 'lh': self.left_hand[bar_idx],
+                'rf': self.right_foot[bar_idx], 'lf': self.left_foot[bar_idx]}
 
     def __iter__(self):
         return self
 
-    # def __next__(self):
-    #     self.bar_idx += 1
-    #     next_bar = self.query(self.bar_idx - 1)
-    #     assert isinstance(next_bar, BarPattern)
-    #     return next_bar.pattern
-
     def __next__(self):
-        self.bar_idx %= len(self.bars)
-        current_bar = self.bars[self.bar_idx]
+        if self.current_idx < self.max_len:
+            out_item = self.__getitem__(self.current_idx)
+            self.current_idx += 1
+            return out_item
+        raise StopIteration
 
-        if self.current_loop < current_bar.num_loops:
-            self.current_loop += 1
-            return current_bar.pattern
-        else:
-            self.bar_idx += 1
-            self.bar_idx %= len(self.bars)
-            self.current_loop = 0
-            return self.bars[self.bar_idx].pattern
+    def is_last_beat(self):
+        self.prev_idx = self.current_idx
+        try:
+            self.__next__()
+        except StopIteration:
+            self.current_idx = self.prev_idx
+            return True
+        self.current_idx = self.prev_idx
+        return False
 
 
 class Exercise:
@@ -114,109 +103,97 @@ class Exercise:
     Phrases in 4 voices that form an exercise routine
     """
 
-    def __init__(self, left_foot: Phrase = None, right_foot: Phrase = None,
-                 left_hand: Phrase = None, right_hand: Phrase = None):
-        self.left_foot = left_foot
-        self.right_foot = right_foot
-        self.left_hand = left_hand
-        self.right_hand = right_hand
-        self.bar_idx = 0
+    def __init__(self, name, patterns: list[Pattern]):
+        self.name = name
+        self.patterns = patterns
+        self.pattern_idx = 0
 
     @classmethod
-    def note_tree_feet_alternating(cls, num_beats: int = 4, num_loops: int = 2):
-        increment_pattern = [Note.TWO, Note.WHOLE, Note.HALF, Note.QUARTER, Note.HALF, Note.WHOLE]
-        # Iterate over increments for each foot
-        right_foot_bars = [BarPattern.from_recipe(increment=increment, offset=0.0,
-                                                  num_beats=num_beats, num_loops=num_loops)
-                           for increment in increment_pattern]
-        right_foot_phrase = Phrase(bars=right_foot_bars)
-        left_foot_bars = [BarPattern.from_recipe(increment=increment, offset=0.5,
-                                                 num_beats=num_beats, num_loops=num_loops)
-                          for increment in increment_pattern]
-        left_foot_phrase = Phrase(bars=left_foot_bars)
-        return cls(left_foot=left_foot_phrase, right_foot=right_foot_phrase)
-
-    @classmethod
-    def left_to_right_note_tree(cls, num_beats: int = 4, num_loops: int = 2):
-        right_foot_bars = [
-            BarPattern.from_notes(notes=[
-                Note.WHOLE,
-                Note.HALF, Note.HALF,
-                Note.QUARTER_TRIPLET, Note.QUARTER_TRIPLET, Note.QUARTER_TRIPLET,
-                Note.QUARTER, Note.QUARTER, Note.QUARTER, Note.QUARTER,
-            ], num_beats=num_beats, num_loops=num_loops),
-            BarPattern.from_notes(notes=[], num_beats=num_beats, num_loops=num_loops),
-            BarPattern.from_notes(notes=[
-                Note.WHOLE,
-                Note.HALF, Note.HALF,
-                Note.QUARTER_TRIPLET, Note.QUARTER_TRIPLET, Note.QUARTER_TRIPLET,
-                Note.QUARTER, Note.QUARTER, Note.QUARTER, Note.QUARTER,
-            ], num_beats=num_beats, num_loops=num_loops),
-            BarPattern.from_notes(notes=[
-                Note.WHOLE,
-                Note.HALF, Note.HALF,
-                Note.QUARTER_TRIPLET, Note.QUARTER_TRIPLET, Note.QUARTER_TRIPLET,
-                Note.QUARTER, Note.QUARTER, Note.QUARTER, Note.QUARTER,
-            ], num_beats=num_beats, num_loops=num_loops)
-        ]
-        right_foot_phrase = Phrase(bars=right_foot_bars)
-        left_foot_bars = [
-            BarPattern.from_notes(notes=[], num_beats=num_beats, num_loops=num_loops),
-            BarPattern.from_notes(notes=[
-                Note.WHOLE,
-                Note.HALF, Note.HALF,
-                Note.QUARTER_TRIPLET, Note.QUARTER_TRIPLET, Note.QUARTER_TRIPLET,
-                Note.QUARTER, Note.QUARTER, Note.QUARTER, Note.QUARTER,
-            ], num_beats=num_beats, num_loops=num_loops),
-            BarPattern.from_notes(notes=[
-                Note.WHOLE,
-                Note.HALF, Note.HALF,
-                Note.QUARTER_TRIPLET, Note.QUARTER_TRIPLET, Note.QUARTER_TRIPLET,
-                Note.QUARTER, Note.QUARTER, Note.QUARTER, Note.QUARTER,
-            ], num_beats=num_beats, num_loops=num_loops),
-            BarPattern.from_notes(notes=[
-                Note.WHOLE,
-                Note.HALF, Note.HALF,
-                Note.QUARTER_TRIPLET, Note.QUARTER_TRIPLET, Note.QUARTER_TRIPLET,
-                Note.QUARTER, Note.QUARTER, Note.QUARTER, Note.QUARTER,
-            ], num_beats=num_beats, num_loops=num_loops)
-        ]
-        left_foot_phrase = Phrase(bars=left_foot_bars)
-        return cls(left_foot=left_foot_phrase, right_foot=right_foot_phrase)
+    def from_tsv(cls, exercise_str):
+        # Break the string into relevant sections and split into lists
+        exercise_lines = exercise_str.replace('\n\n', '\n').split('\n')
+        name = exercise_lines[0].replace('\t', '')
+        pattern_names = exercise_lines[1].split('\t')[1:]
+        rh = exercise_lines[2].split('\t')[1:]
+        lh = exercise_lines[3].split('\t')[1:]
+        rf = exercise_lines[4].split('\t')[1:]
+        lf = exercise_lines[5].split('\t')[1:]
+        loops = exercise_lines[6].split('\t')[1:]
+        # Iterate over loops, adding patterns in chunks with num_loops identifying the first member of the loop
+        pattern_list = []
+        for idx, num_loops in enumerate(loops):
+            if num_loops == '':
+                pass
+            else:
+                end_idx = idx
+                for next_idx in range(idx + 1, len(loops)):
+                    if loops[next_idx] != '':
+                        end_idx = next_idx - 1
+                        break
+                end_idx += 1
+                new_pattern = Pattern.from_tsv(name=pattern_names[idx],
+                                               left_foot=lf[idx:end_idx], right_foot=rf[idx:end_idx],
+                                               right_hand=rh[idx:end_idx], left_hand=lh[idx:end_idx],
+                                               num_loops=int(num_loops))
+                pattern_list.append(new_pattern)
+        return cls(name=name, patterns=pattern_list)
 
     def __iter__(self):
         return self
 
     def __next__(self):
-        self.bar_idx += 1
-        left_foot_pattern = []
-        right_foot_pattern = []
-        left_hand_pattern = []
-        right_hand_pattern = []
-        if self.left_foot is not None:
-            left_foot_pattern = self.left_foot.__next__()
-        if self.right_foot is not None:
-            right_foot_pattern = self.right_foot.__next__()
-        if self.left_hand is not None:
-            left_hand_pattern = self.left_hand.__next__()
-        if self.right_hand is not None:
-            right_hand_pattern = self.right_hand.__next__()
-        return [right_foot_pattern, left_foot_pattern, right_hand_pattern, left_hand_pattern]
+        try:
+            return self.patterns[self.pattern_idx].__next__()
+        except StopIteration:
+            self.pattern_idx += 1
+        try:
+            return self.patterns[self.pattern_idx].__next__()
+        except IndexError:
+            raise StopIteration
 
-    def preview(self):
-        """
-        Take a peek at the next upcoming pattern.
-        """
-        left_foot_pattern = []
-        right_foot_pattern = []
-        left_hand_pattern = []
-        right_hand_pattern = []
-        if self.left_foot is not None:
-            left_foot_pattern = self.left_foot.query((self.left_foot.bar_idx + 1) % self.left_foot.bar_count)
-        if self.right_foot is not None:
-            right_foot_pattern = self.right_foot.query((self.right_foot.bar_idx + 1) % self.right_foot.bar_count)
-        if self.left_hand is not None:
-            left_hand_pattern = self.left_hand.query((self.left_hand.bar_idx + 1) % self.left_hand.bar_count)
-        if self.right_hand is not None:
-            right_hand_pattern = self.right_hand.query((self.right_hand.bar_idx + 1) % self.right_hand.bar_count)
-        return [right_foot_pattern, left_foot_pattern, right_hand_pattern, left_hand_pattern]
+    def reset(self):
+        self.pattern_idx = 0
+        for pat in self.patterns:
+            pat.current_idx = 0
+
+    def is_last_beat(self):
+        prev_pattern_idx = self.pattern_idx
+        prev_idx = self.patterns[self.pattern_idx].current_idx
+        is_last = False
+        try:
+            self.__next__()
+            self.__next__()
+        except StopIteration:
+            is_last = True
+        if self.pattern_idx != prev_pattern_idx and is_last is False:
+            self.patterns[self.pattern_idx].current_idx -= 1
+        self.pattern_idx = prev_pattern_idx
+        self.patterns[self.pattern_idx].current_idx = prev_idx
+        return is_last
+
+
+class ExerciseFactory:
+    """
+    Load exercises from csv
+    """
+    def __init__(self):
+        self.csv_fpath = Config.EXERCISE_CSV_FPATH
+        with open('./data/exercises.tsv', 'r') as fp:
+            exercise_lines = '\n'.join(fp.readlines())
+        exercise_groups = exercise_lines.split('!!!')[1:]
+        self.exercises = [Exercise.from_tsv(ex_group) for ex_group in exercise_groups]
+
+    def by_name(self, exercise_name):
+        exercise_name = exercise_name.lower().replace(' ', '')
+        for exercise in self.exercises:
+            assert isinstance(exercise, Exercise)
+            if exercise.name.lower().replace(' ', '') == exercise_name:
+                return exercise
+        return None
+
+    def list_names(self):
+        return [ex.name for ex in self.exercises]
+
+
+
+
