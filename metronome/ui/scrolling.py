@@ -9,17 +9,17 @@ from metronome.arduino.arduino_threaded import Hit, ArduinoController
 
 
 class MovingObject:
-    def __init__(self, window, creation_time, beats_on_screen, channel=-1):
+    def __init__(self, window, offset=0.0, channel=-1):
         self.window = window
         self.screen_width, self.screen_height = self.window.get_size()
-        self.creation_time = creation_time
-        self.beats_on_screen = beats_on_screen
+        self.last_updated = time.time()
+        self.offset = offset
         self.channel = channel
-        self.x = self.screen_width  # Starting position at the right edge
+        self.x = self.screen_width + self.offset  # Starting position at the right edge
         self.hit = False
         self.font = pygame.font.Font(None, 24)
 
-    def get_offset(self):
+    def get_y(self):
         if self.channel == 0:
             return 0
         elif self.channel == 1:
@@ -31,39 +31,36 @@ class MovingObject:
         else:
             return 300
 
-    def update(self):
-        elapsed_time = time.time() - self.creation_time
-        # The object should move across the entire width
-        self.x = self.screen_width - (self.screen_width * elapsed_time / self.beats_on_screen)
+    def update(self, speed):
+        self.x -= speed * (time.time() - self.last_updated)
+        self.last_updated = time.time()
 
 
 class Target(MovingObject):
     def draw(self):
         if self.hit is True:
-            pygame.draw.circle(self.window, LIGHT_BLUE, (int(self.x), int(self.get_offset() + 250)), 12)
-            pygame.draw.circle(self.window, BLACK, (int(self.x), int(self.get_offset() + 250)), 10)
+            pygame.draw.circle(self.window, LIGHT_BLUE, (int(self.x), int(self.get_y() + 250)), 12)
+            pygame.draw.circle(self.window, BLACK, (int(self.x), int(self.get_y() + 250)), 10)
         else:
-            pygame.draw.circle(self.window, LIGHT_BLUE, (int(self.x), int(self.get_offset() + 250)), 12)
+            pygame.draw.circle(self.window, LIGHT_BLUE, (int(self.x), int(self.get_y() + 250)), 12)
             if self.channel % 2 == 0:
                 target_side = self.font.render("R", True, BLACK)
             else:
                 target_side = self.font.render("L", True, BLACK)
-            self.window.blit(target_side, (int(self.x - 6), int(self.get_offset() + 243)))
+            self.window.blit(target_side, (int(self.x - 6), int(self.get_y() + 243)))
 
 
 class Attempt(MovingObject):
     def draw(self):
         color = GREEN if self.hit else WHITE
-        pygame.draw.circle(self.window, color, (int(self.x - self.screen_width / 2), int(self.get_offset() + 250)), 6)
+        pygame.draw.circle(self.window, color, (int(self.x - self.screen_width / 2), int(self.get_y() + 250)), 6)
 
 
 class BeatLine:
-    def __init__(self, window, creation_time, beats_on_screen, click_sound_tick, click_sound_tock=None,
-                 beat_idx=1):
+    def __init__(self, window, click_sound_tick, click_sound_tock=None, beat_idx=1):
         self.window = window
         self.screen_width, self.screen_height = self.window.get_size()
-        self.creation_time = creation_time
-        self.beats_on_screen = beats_on_screen
+        self.last_updated = time.time()
         self.x = self.screen_width  # Starting position at the right edge
         self.hit = False
         self.on_the_one = beat_idx == 0
@@ -72,10 +69,9 @@ class BeatLine:
         self.click_sound_tock = click_sound_tock or click_sound_tick
         self.font = pygame.font.Font(None, 36)
 
-    def update(self):
-        elapsed_time = time.time() - self.creation_time
-        # The object should move across the entire width in 4 seconds
-        self.x = self.screen_width - (self.screen_width * elapsed_time / self.beats_on_screen)
+    def update(self, speed):
+        self.x -= speed * (time.time() - self.last_updated)
+        self.last_updated = time.time()
 
     def draw(self, targeted_beat, beats_per_bar):
         if self.on_the_one is True:
@@ -104,11 +100,13 @@ class GameUI:
         pygame.display.set_caption(f'Monotonous Industrial Blender - Extreme {exercise_name.title()} Edition')
         # Game settings
         self.bpm = bpm
-        self.beat_interval = 60.0 / self.bpm
-        self.next_beat_time = time.time() + self.beat_interval
+        self.beat_interval = None
+        self.next_beat_time = None
+        self.beats_on_screen = beats_on_screen
+        self.speed = 0
+        self.update_bpm(self.bpm)
         self.center_line_position = self.width // 2
         self.beats_per_bar = beats_per_bar
-        self.beats_on_screen = beats_on_screen
         self.next_beat = 0
         self.targeted_beat = -1
         self.channels = 4
@@ -143,22 +141,21 @@ class GameUI:
         self.bpm = new_bpm
         self.beat_interval = 60.0 / self.bpm
         self.next_beat_time = time.time() + self.beat_interval
+        self.speed = (self.width / (60.0 / self.bpm)) / self.beats_on_screen
 
-    def handle_events(self, current_time):
+    def handle_events(self):
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 return False
             elif event.type == pygame.KEYDOWN:
-                self.handle_keydown(event, current_time)
+                self.handle_keydown(event)
         return True
 
-    def handle_keydown(self, event, current_time):
+    def handle_keydown(self, event):
         hit_attempt = False
         for i in range(self.channels):
             if event.key == self.keys[i]:
                 new_attempt = Attempt(window=self.window,
-                                      creation_time=current_time,
-                                      beats_on_screen=self.beats_on_screen,
                                       channel=i)
                 hit = False
                 for target in self.targets:
@@ -188,8 +185,6 @@ class GameUI:
             #       f'lag={round(time.time() - new_hit.time, 2)}')
             if new_hit.amplitude > self.hit_threshold:
                 new_attempt = Attempt(window=self.window,
-                                      creation_time=new_hit.time,
-                                      beats_on_screen=self.beats_on_screen,
                                       channel=new_hit.channel)
                 hit = False
                 for target in self.targets:
@@ -208,7 +203,7 @@ class GameUI:
                     self.misses += 1
                 self.attempts.append(new_attempt)
 
-    def pattern_to_targets(self, new_pattern: Pattern, current_time: float):
+    def pattern_to_targets(self, new_pattern: Pattern):
         """
         Turn a pattern into a list of targets
         """
@@ -216,8 +211,7 @@ class GameUI:
         for idx, key in enumerate(['rh', 'lh', 'rf', 'lf']):
             for note_value in new_pattern[key]:
                 targets.append(Target(window=self.window,
-                                      creation_time=current_time + note_value * (60.0 / self.bpm),
-                                      beats_on_screen=self.beats_on_screen,
+                                      offset=note_value * (self.width / self.beats_on_screen),
                                       channel=idx))
         return targets
 
@@ -241,11 +235,11 @@ class GameUI:
             pygame.draw.line(self.window, WHITE,
                              (self.center_line_position, 200), (self.center_line_position, self.height), 5)
             for line in self.lines:
-                line.update()
+                line.update(self.speed)
                 self.targeted_beat = line.draw(targeted_beat=self.targeted_beat, beats_per_bar=self.beats_per_bar)
             self.lines = [line for line in self.lines if line.x >= 0]
             for target in self.targets:
-                target.update()
+                target.update(self.speed)
                 target.draw()
             missed_targets = [target for target in self.targets if target.x < 0 and target.hit is False]
             if len(missed_targets) > 0:
@@ -253,26 +247,24 @@ class GameUI:
                 self.misses += len(missed_targets)
             self.targets = [target for target in self.targets if target.x >= 0]
             for attempt in self.attempts:
-                attempt.update()
+                attempt.update(self.speed)
                 attempt.draw()
             self.attempts = [attempt for attempt in self.attempts if attempt.x >= 0]
             # Generate and Update Lines and Targets
             if current_time >= self.next_beat_time:
-                self.lines.append(BeatLine(window=self.window,
-                                           creation_time=current_time,
-                                           beats_on_screen=self.beats_on_screen,
-                                           click_sound_tick=self.tick_sound,
-                                           click_sound_tock=self.tock_sound,
-                                           beat_idx=self.next_beat))
                 if self.next_beat == 0:
                     try:
                         self.current_pattern = self.exercise.__next__()
                     except StopIteration:
                         self.exercise.reset()
                         self.current_pattern = self.exercise.__next__()
-                        self.bpm += 5.0
-                    self.targets.extend(self.pattern_to_targets(new_pattern=self.current_pattern,
-                                                                current_time=current_time))
+                    self.targets.extend(self.pattern_to_targets(new_pattern=self.current_pattern))
+                if self.exercise.is_last_beat() is True and self.next_beat == self.beats_per_bar - 1:
+                    self.update_bpm(self.bpm + 5)
+                self.lines.append(BeatLine(window=self.window,
+                                           click_sound_tick=self.tick_sound,
+                                           click_sound_tock=self.tock_sound,
+                                           beat_idx=self.next_beat))
                 self.next_beat += 1
                 self.next_beat %= self.beats_per_bar
                 self.next_beat_time += self.beat_interval
@@ -337,7 +329,7 @@ def run():
                     pos = pygame.mouse.get_pos()
                     menu_mode = menu.handle_event(event, pos)
                 elif not menu_mode and event.type == pygame.KEYDOWN:
-                    game.handle_keydown(event=event, current_time=current_time)
+                    game.handle_keydown(event=event)
             if menu_mode is True:
                 menu.draw()
             else:

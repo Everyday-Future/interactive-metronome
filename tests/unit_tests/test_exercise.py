@@ -54,16 +54,35 @@ def test_pattern_from_tsv():
     assert test_pattern.max_len == 6
 
 
+def test_pattern_last_beat():
+    test_pattern = Pattern(name='test pattern', left_foot=[[0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5]], num_loops=1)
+    assert test_pattern.__next__()['lf'] == [0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5]
+    assert test_pattern.is_last_beat() is True
+    test_pattern = Pattern(name='test pattern', left_foot=[[0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5]], num_loops=2)
+    assert test_pattern.is_last_beat() is False
+    test_pattern = Pattern(name='test pattern', left_foot=[[0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5], [1.0, 2.0]],
+                           num_loops=2)
+    assert test_pattern.__next__()['lf'] == [0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5]
+    assert test_pattern.__next__()['lf'] == [1.0, 2.0]
+    assert test_pattern.__next__()['lf'] == [0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5]
+    assert test_pattern.__next__()['lf'] == [1.0, 2.0]
+    try:
+        test_pattern.__next__()
+        assert False
+    except StopIteration:
+        pass
+
+
 def test_exercise():
     test_pattern_1 = Pattern.from_tsv(name='test pattern', left_foot=['xxx,---,xxx,---'])
     test_pattern_2 = Pattern.from_tsv(name='test pattern',
                                       left_foot=['xxx,---,xxx,---', 'x---,x-x-,x---,x--x'],
                                       num_loops=3)
     test_ex = Exercise(name='test_exercise', patterns=[test_pattern_1, test_pattern_2])
-    assert test_ex.__next__() == {'lf': [0.0, 0.33, 0.67, 2.0, 2.33, 2.67], 'lh': [], 'rf': [], 'rh': []}
-    assert test_ex.__next__() == {'lf': [0.0, 0.33, 0.67, 2.0, 2.33, 2.67], 'lh': [], 'rf': [], 'rh': []}
-    assert test_ex.__next__() == {'lf': [0.0, 1.0, 1.5, 2.0, 3.0, 3.75], 'lh': [], 'rf': [], 'rh': []}
-    assert test_ex.__next__() == {'lf': [0.0, 0.33, 0.67, 2.0, 2.33, 2.67], 'lh': [], 'rf': [], 'rh': []}
+    assert test_ex.__next__() == {'name': 'test pattern', 'lf': [0.0, 0.33, 0.67, 2.0, 2.33, 2.67], 'lh': [], 'rf': [], 'rh': []}
+    assert test_ex.__next__() == {'name': 'test pattern', 'lf': [0.0, 0.33, 0.67, 2.0, 2.33, 2.67], 'lh': [], 'rf': [], 'rh': []}
+    assert test_ex.__next__() == {'name': 'test pattern', 'lf': [0.0, 1.0, 1.5, 2.0, 3.0, 3.75], 'lh': [], 'rf': [], 'rh': []}
+    assert test_ex.__next__() == {'name': 'test pattern', 'lf': [0.0, 0.33, 0.67, 2.0, 2.33, 2.67], 'lh': [], 'rf': [], 'rh': []}
     exercise_str = """
     Hand-To-Hand																
 N	Quarter Note Warmup	Quarter Note Warmup	Alternating 8th Notes	Alternating 8th Notes	Triplet Warmup	Triplet Warmup	Alternating Triplets	Alternating Triplets	Alternating 8th Flams	Alternating 8th Flams	Alternating 16th Singles	Alternating 16th Singles	Alternating 16th Doubles	Alternating 16th Doubles	Paradiddles	Rev. Paradiddles	5 Stroke Roll
@@ -78,20 +97,38 @@ Loops	4		4		4		4		2		8				4		4
     assert len(test_ex.patterns) == 8
     assert test_ex.patterns[0].right_hand == [[0.0, 1.0, 2.0, 3.0], []]
     assert test_ex.patterns[0].left_hand == [[], [0.0, 1.0, 2.0, 3.0]]
-    assert test_ex.__next__() == {'rh': [0.0, 1.0, 2.0, 3.0], 'lh': [], 'rf': [], 'lf': []}
-    assert test_ex.__next__() == {'lf': [], 'lh': [0.0, 1.0, 2.0, 3.0], 'rf': [], 'rh': []}
-    assert test_ex.__next__() == {'rh': [0.0, 1.0, 2.0, 3.0], 'lh': [], 'rf': [], 'lf': []}
-    assert test_ex.__next__() == {'lf': [], 'lh': [0.0, 1.0, 2.0, 3.0], 'rf': [], 'rh': []}
-    assert test_ex.__next__() == {'rh': [0.0, 1.0, 2.0, 3.0], 'lh': [], 'rf': [], 'lf': []}
-    assert test_ex.__next__() == {'lf': [], 'lh': [0.0, 1.0, 2.0, 3.0], 'rf': [], 'rh': []}
-    assert test_ex.__next__() == {'rh': [0.0, 1.0, 2.0, 3.0], 'lh': [], 'rf': [], 'lf': []}
-    assert test_ex.__next__() == {'lf': [], 'lh': [0.0, 1.0, 2.0, 3.0], 'rf': [], 'rh': []}
-    assert test_ex.__next__() == {'lf': [], 'lh': [0.5, 1.5, 2.5, 3.5], 'rf': [], 'rh': [0.0, 1.0, 2.0, 3.0]}
+    assert test_ex.__next__() == {'name': 'Quarter Note Warmup', 'rh': [0.0, 1.0, 2.0, 3.0], 'lh': [], 'rf': [], 'lf': []}
+    assert test_ex.__next__() == {'name': 'Quarter Note Warmup', 'lf': [], 'lh': [0.0, 1.0, 2.0, 3.0], 'rf': [], 'rh': []}
+    assert test_ex.__next__() == {'name': 'Quarter Note Warmup', 'rh': [0.0, 1.0, 2.0, 3.0], 'lh': [], 'rf': [], 'lf': []}
+    assert test_ex.__next__() == {'name': 'Quarter Note Warmup', 'lf': [], 'lh': [0.0, 1.0, 2.0, 3.0], 'rf': [], 'rh': []}
+    assert test_ex.__next__() == {'name': 'Quarter Note Warmup', 'rh': [0.0, 1.0, 2.0, 3.0], 'lh': [], 'rf': [], 'lf': []}
+    assert test_ex.__next__() == {'name': 'Quarter Note Warmup', 'lf': [], 'lh': [0.0, 1.0, 2.0, 3.0], 'rf': [], 'rh': []}
+    assert test_ex.__next__() == {'name': 'Quarter Note Warmup', 'rh': [0.0, 1.0, 2.0, 3.0], 'lh': [], 'rf': [], 'lf': []}
+    assert test_ex.__next__() == {'name': 'Quarter Note Warmup', 'lf': [], 'lh': [0.0, 1.0, 2.0, 3.0], 'rf': [], 'rh': []}
+    assert test_ex.__next__() == {'name': 'Alternating 8th Notes', 'lf': [], 'lh': [0.5, 1.5, 2.5, 3.5], 'rf': [], 'rh': [0.0, 1.0, 2.0, 3.0]}
     all_results = [exs for exs in test_ex]
     assert len(all_results) < 10000
     test_ex.reset()
     all_results = [exs for exs in test_ex]
     assert len(all_results) < 10000
+
+
+def test_exercise_last_beat():
+    test_pattern_1 = Pattern.from_tsv(name='test pattern', left_foot=['xxx,---,xxx,---'])
+    test_pattern_2 = Pattern.from_tsv(name='test pattern',
+                                      left_foot=['xxx,-x-,xxx,-x-', 'x---,x-x-,x---,x--x'],
+                                      num_loops=1)
+    test_ex = Exercise(name='test_exercise', patterns=[test_pattern_1, test_pattern_2])
+    assert test_ex.is_last_beat() is False
+    assert test_ex.__next__()['lf'] == [0.0, 0.33, 0.67, 2.0, 2.33, 2.67]
+    assert test_ex.__next__()['lf'] == [0.0, 0.33, 0.67, 1.33, 2.0, 2.33, 2.67, 3.33]
+    assert test_ex.is_last_beat() is True
+    assert test_ex.__next__()['lf'] == [0.0, 1.0, 1.5, 2.0, 3.0, 3.75]
+    try:
+        test_ex.__next__()
+        assert False
+    except StopIteration:
+        pass
 
 
 def test_exercise_factory():

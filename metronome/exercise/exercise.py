@@ -18,7 +18,7 @@ class Pattern:
         self.num_loops = num_loops
         self.num_bars = max(len(self.left_foot or []), len(self.right_foot or []),
                             len(self.left_hand or []), len(self.right_hand or []))
-        self.current_idx = -1
+        self.current_idx = 0
         self.max_len = self.num_bars * self.num_loops
         # Fill in blank bars
         if self.left_foot is None:
@@ -81,10 +81,21 @@ class Pattern:
         return self
 
     def __next__(self):
-        self.current_idx += 1
         if self.current_idx < self.max_len:
-            return self.__getitem__(self.current_idx)
+            out_item = self.__getitem__(self.current_idx)
+            self.current_idx += 1
+            return out_item
         raise StopIteration
+
+    def is_last_beat(self):
+        self.prev_idx = self.current_idx
+        try:
+            self.__next__()
+        except StopIteration:
+            self.current_idx = self.prev_idx
+            return True
+        self.current_idx = self.prev_idx
+        return False
 
 
 class Exercise:
@@ -143,7 +154,22 @@ class Exercise:
     def reset(self):
         self.pattern_idx = 0
         for pat in self.patterns:
-            pat.current_idx = -1
+            pat.current_idx = 0
+
+    def is_last_beat(self):
+        prev_pattern_idx = self.pattern_idx
+        prev_idx = self.patterns[self.pattern_idx].current_idx
+        is_last = False
+        try:
+            self.__next__()
+            self.__next__()
+        except StopIteration:
+            is_last = True
+        if self.pattern_idx != prev_pattern_idx and is_last is False:
+            self.patterns[self.pattern_idx].current_idx -= 1
+        self.pattern_idx = prev_pattern_idx
+        self.patterns[self.pattern_idx].current_idx = prev_idx
+        return is_last
 
 
 class ExerciseFactory:
