@@ -217,7 +217,8 @@ class GameUI:
 
     def update_and_draw(self, current_time):
         self.window.fill(BLACK)
-        if self.got_first_hit is False:
+        # Wait for first hit to start game unless in Debug mode
+        if self.got_first_hit is False and Config.DEBUG_MODE is False:
             if self.hit_collector.get_hit() is not None:
                 self.got_first_hit = True
                 self.next_beat_time = time.time() + self.beat_interval
@@ -259,8 +260,10 @@ class GameUI:
                         self.exercise.reset()
                         self.current_pattern = self.exercise.__next__()
                     self.targets.extend(self.pattern_to_targets(new_pattern=self.current_pattern))
+                # Update BPM or training patterns at the end of each beat
                 if self.exercise.is_last_beat() is True and self.next_beat == self.beats_per_bar - 1:
                     self.update_bpm(self.bpm + 5)
+                    self.next_beat_time += 3.0
                 self.lines.append(BeatLine(window=self.window,
                                            click_sound_tick=self.tick_sound,
                                            click_sound_tock=self.tock_sound,
@@ -307,13 +310,14 @@ class GameUI:
 
 
 def run():
-    width, height = 1080, 600
+    width, height = 1800, 1000
     pygame.init()
     pygame.mixer.init()
     window = pygame.display.set_mode((width, height))
     pygame.display.set_caption('Monotonous Industrial Blender - Main Menu')
     hit_collector = ArduinoController(port=Config.COM_PORT, baudrate=Config.BAURDRATE, name='hits')
     menu = MenuUI(screen=window, exercise_names=ExerciseFactory().list_names())
+    menu.splash()
     game = None
     try:
         # Main loop
